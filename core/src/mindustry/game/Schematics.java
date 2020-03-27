@@ -142,6 +142,7 @@ public class Schematics implements Loadable{
                 ui.showException(e);
             }
         }
+        all.sort();
     }
 
     public void savePreview(Schematic schematic, Fi file){
@@ -182,7 +183,7 @@ public class Schematics implements Loadable{
             Tmp.m2.set(Draw.trans());
             FrameBuffer buffer = new FrameBuffer((schematic.width + padding) * resolution, (schematic.height + padding) * resolution);
 
-            shadowBuffer.beginDraw(Color.clear);
+            shadowBuffer.begin(Color.clear);
 
             Draw.trans().idt();
             Draw.proj().setOrtho(0, 0, shadowBuffer.getWidth(), shadowBuffer.getHeight());
@@ -201,9 +202,9 @@ public class Schematics implements Loadable{
                 }
             });
 
-            shadowBuffer.endDraw();
+            shadowBuffer.end();
 
-            buffer.beginDraw(Color.clear);
+            buffer.begin(Color.clear);
 
             Draw.proj().setOrtho(0, buffer.getHeight(), buffer.getWidth(), -buffer.getHeight());
 
@@ -230,7 +231,7 @@ public class Schematics implements Loadable{
             Draw.flush();
             Draw.trans().idt();
 
-            buffer.endDraw();
+            buffer.end();
 
             Draw.proj(Tmp.m1);
             Draw.trans(Tmp.m2);
@@ -280,6 +281,7 @@ public class Schematics implements Loadable{
             ui.showException(e);
             Log.err(e);
         }
+        all.sort();
     }
 
     public void remove(Schematic s){
@@ -292,6 +294,7 @@ public class Schematics implements Loadable{
             previews.get(s).dispose();
             previews.remove(s);
         }
+        all.sort();
     }
 
     /** Creates a schematic from a world selection. */
@@ -372,7 +375,7 @@ public class Schematics implements Loadable{
     /** Loads a schematic from base64. May throw an exception. */
     public static Schematic readBase64(String schematic){
         try{
-            return read(new ByteArrayInputStream(Base64Coder.decode(schematic)));
+            return read(new ByteArrayInputStream(Base64Coder.decode(schematic.trim())));
         }catch(IOException e){
             throw new RuntimeException(e);
         }

@@ -49,7 +49,7 @@ public class GlobalData{
             for(Fi add : files){
                 if(add.isDirectory()) continue;
                 zos.putNextEntry(new ZipEntry(add.path().substring(base.length())));
-                Streams.copyStream(add.read(), zos);
+                Streams.copy(add.read(), zos);
                 zos.closeEntry();
             }
 
@@ -85,9 +85,15 @@ public class GlobalData{
         if(amount > 0){
             unlockContent(item);
         }
+        amount = Math.max(amount, 0);
+
         modified = true;
         items.getAndIncrement(item, 0, amount);
         state.stats.itemsDelivered.getAndIncrement(item, 0, amount);
+
+        //clamp overflow
+        if(items.get(item, 0) < 0) items.put(item, Integer.MAX_VALUE);
+        if(state.stats.itemsDelivered.get(item, 0) < 0) state.stats.itemsDelivered.put(item, Integer.MAX_VALUE);
     }
 
     public boolean hasItems(Array<ItemStack> stacks){

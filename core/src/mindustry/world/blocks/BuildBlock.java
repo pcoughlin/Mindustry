@@ -57,8 +57,8 @@ public class BuildBlock extends Block{
     public static void onDeconstructFinish(Tile tile, Block block, int builderID){
         Team team = tile.getTeam();
         Effects.effect(Fx.breakBlock, tile.drawx(), tile.drawy(), block.size);
-        tile.remove();
         Events.fire(new BlockBuildEndEvent(tile, playerGroup.getByID(builderID), team, true));
+        tile.remove();
         if(shouldPlay()) Sounds.breaks.at(tile, calcPitch(false));
     }
 
@@ -173,7 +173,7 @@ public class BuildBlock extends Block{
 
         if(entity.previous == null || entity.cblock == null) return;
 
-        if(Core.atlas.isFound(entity.previous.icon(mindustry.ui.Cicon.full))){
+        if(Core.atlas.isFound(entity.previous.icon(Cicon.full))){
             Draw.rect(entity.previous.icon(Cicon.full), tile.drawx(), tile.drawy(), entity.previous.rotate ? tile.rotation() * 90 : 0);
         }
     }
@@ -252,7 +252,7 @@ public class BuildBlock extends Block{
         }
 
         public void deconstruct(Unit builder, @Nullable TileEntity core, float amount){
-            float deconstructMultiplier = 0.5f;
+            float deconstructMultiplier = state.rules.deconstructRefundMultiplier;
 
             if(cblock != null){
                 ItemStack[] requirements = cblock.requirements;

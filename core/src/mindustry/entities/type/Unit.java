@@ -185,11 +185,6 @@ public abstract class Unit extends DestructibleEntity implements SaveTrait, Targ
         y = Mathf.clamp(y, 0, world.height() * tilesize - tilesize);
     }
 
-    public void kill(){
-        health = -1;
-        damage(1);
-    }
-
     public boolean isImmune(StatusEffect effect){
         return false;
     }
@@ -226,7 +221,7 @@ public abstract class Unit extends DestructibleEntity implements SaveTrait, Targ
         float radScl = 1.5f;
 
         for(Unit en : arr){
-            if(en.isFlying() != isFlying() || (en instanceof Player && en.getTeam() != getTeam())) continue;
+            if(en.isFlying() != isFlying() || (en instanceof Player && en.getTeam() != getTeam()) || (this instanceof Player && en.isFlying())) continue;
             float dst = dst(en);
             float scl = Mathf.clamp(1f - dst / (getSize()/(radScl*2f) + en.getSize()/(radScl*2f)));
             moveVector.add(Tmp.v1.set((x - en.x) * scl, (y - en.y) * scl).limit(0.4f));
@@ -242,6 +237,10 @@ public abstract class Unit extends DestructibleEntity implements SaveTrait, Targ
         return tile == null ? (Floor)Blocks.air : tile.floor();
     }
 
+    public @Nullable Tile tileOn(){
+        return world.tileWorld(x, y);
+    }
+
     public void onRespawn(Tile tile){
     }
 
@@ -252,6 +251,7 @@ public abstract class Unit extends DestructibleEntity implements SaveTrait, Targ
         Tile tile = world.tileWorld(x, y);
 
         status.update(this);
+        item.amount = Mathf.clamp(this.item.amount, 0, getItemCapacity());
 
         velocity.limit(maxVelocity()).scl(1f + (status.getSpeedMultiplier() - 1f) * Time.delta());
 
@@ -341,6 +341,7 @@ public abstract class Unit extends DestructibleEntity implements SaveTrait, Targ
     public void addItem(Item item, int amount){
         this.item.amount = this.item.item == item ? this.item.amount + amount : amount;
         this.item.item = item;
+        this.item.amount = Mathf.clamp(this.item.amount, 0, getItemCapacity());
     }
 
     public void clearItem(){

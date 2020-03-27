@@ -3,7 +3,7 @@ package mindustry.mod;
 import arc.*;
 import arc.assets.*;
 import arc.audio.*;
-import arc.audio.mock.*;
+import arc.mock.*;
 import arc.struct.Array;
 import arc.struct.*;
 import arc.files.*;
@@ -333,8 +333,8 @@ public class ContentParser{
     }
 
     private void readBundle(ContentType type, String name, JsonValue value){
-        UnlockableContent cont = Vars.content.getByName(type, name) instanceof UnlockableContent ?
-                                Vars.content.getByName(type, name) : null;
+        UnlockableContent cont = locate(type, name) instanceof UnlockableContent ?
+            locate(type, name) : null;
 
         String entryName = cont == null ? type + "." + currentMod.name + "-" + name + "." : type + "." + cont.name + ".";
         I18NBundle bundle = Core.bundle;
@@ -454,6 +454,8 @@ public class ContentParser{
 
         if(t.getMessage() != null && t instanceof JsonParseException){
             builder.append("[accent][[JsonParse][] ").append(":\n").append(t.getMessage());
+        }else if(t instanceof NullPointerException){
+            builder.append(Strings.parseException(t, true));
         }else{
             Array<Throwable> causes = Strings.getCauses(t);
             for(Throwable e : causes){

@@ -66,17 +66,17 @@ public class ServerControl implements ApplicationListener{
             "globalrules", "{reactorExplosions: false}"
         );
 
-        Log.setLogger((level, text, args1) -> {
-            String result = "[" + dateTime.format(LocalDateTime.now()) + "] " + format(tags[level.ordinal()] + " " + text + "&fr", args1);
+        Log.setLogger((level, text) -> {
+            String result = "[" + dateTime.format(LocalDateTime.now()) + "] " + format(tags[level.ordinal()] + " " + text + "&fr");
             System.out.println(result);
 
             if(Config.logging.bool()){
-                logToFile("[" + dateTime.format(LocalDateTime.now()) + "] " + format(tags[level.ordinal()] + " " + text + "&fr", false, args1));
+                logToFile("[" + dateTime.format(LocalDateTime.now()) + "] " + formatColors(tags[level.ordinal()] + " " + text + "&fr", false));
             }
 
             if(socketOutput != null){
                 try{
-                    socketOutput.println(format(text + "&fr", false, args1));
+                    socketOutput.println(formatColors(text + "&fr", false));
                 }catch(Throwable e){
                     err("Error occurred logging to socket: {0}", e.getClass().getSimpleName());
                 }
@@ -491,6 +491,37 @@ public class ServerControl implements ApplicationListener{
             }
         });
 
+        handler.register("subnet-ban", "[add/remove] [address]", "Ban a subnet. This simply rejects all connections with IPs starting with some string.", arg -> {
+            if(arg.length == 0){
+                Log.info("Subnets banned: &lc{0}", netServer.admins.getSubnetBans().isEmpty() ? "<none>" : "");
+                for(String subnet : netServer.admins.getSubnetBans()){
+                    Log.info("&ly  " + subnet + "");
+                }
+            }else if(arg.length == 1){
+                err("You must provide a subnet to add or remove.");
+            }else{
+                if(arg[0].equals("add")){
+                    if(netServer.admins.getSubnetBans().contains(arg[1])){
+                        err("That subnet is already banned.");
+                        return;
+                    }
+
+                    netServer.admins.addSubnetBan(arg[1]);
+                    Log.info("Banned &ly{0}&lc**", arg[1]);
+                }else if(arg[0].equals("remove")){
+                    if(!netServer.admins.getSubnetBans().contains(arg[1])){
+                        err("That subnet isn't banned.");
+                        return;
+                    }
+
+                    netServer.admins.removeSubnetBan(arg[1]);
+                    Log.info("Unbanned &ly{0}&lc**", arg[1]);
+                }else{
+                    err("Incorrect usage. You must provide add/remove as the second argument.");
+                }
+            }
+        });
+
         handler.register("whitelisted", "List the entire whitelist.", arg -> {
             if(netServer.admins.getWhitelisted().isEmpty()){
                 info("&lyNo whitelisted players found.");
@@ -622,52 +653,56 @@ public class ServerControl implements ApplicationListener{
         });
 
         handler.register("unban", "<ip/ID>", "Completely unban a person by IP or ID.", arg -> {
-            if(arg[0].contains(".")){
-                if(netServer.admins.unbanPlayerIP(arg[0])){
-                    info("Unbanned player by IP: {0}.", arg[0]);
-                }else{
-                    err("That IP is not banned!");
-                }
+            if(netServer.admins.unbanPlayerIP(arg[0]) || netServer.admins.unbanPlayerID(arg[0])){
+                info("Unbanned player.", arg[0]);
             }else{
-                if(netServer.admins.unbanPlayerID(arg[0])){
-                    info("Unbanned player by ID: {0}.", arg[0]);
-                }else{
-                    err("That ID is not banned!");
-                }
+                err("That IP/ID is not banned!");
+            }
+        });
+        
+        handler.register("pardon", "<ID>", "Pardons a votekicked player by ID and allows them to join again.", arg -> {
+            PlayerInfo info = netServer.admins.getInfoOptional(arg[0]);
+            
+            if(info != null){
+                info.lastKicked = 0;
+                info("Pardoned player: {0}", info.lastName);
+            }else{
+                err("That ID can't be found.");
             }
         });
 
-        handler.register("admin", "<username...>", "Make an online user admin", arg -> {
+        handler.register("admin", "<add/remove> <username/ID...>", "Make an online user admin", arg -> {
             if(!state.is(State.playing)){
                 err("Open the server first.");
                 return;
             }
 
-            Player target = playerGroup.find(p -> p.name.equals(arg[0]));
-
-            if(target != null){
-                netServer.admins.adminPlayer(target.uuid, target.usid);
-                target.isAdmin = true;
-                info("Admin-ed player: {0}", arg[0]);
-            }else{
-                info("Nobody with that name could be found.");
-            }
-        });
-
-        handler.register("unadmin", "<username...>", "Removes admin status from an online player", arg -> {
-            if(!state.is(State.playing)){
-                err("Open the server first.");
+            if(!(arg[0].equals("add") || arg[0].equals("remove"))){
+                err("Second parameter must be either 'add' or 'remove'.");
                 return;
             }
 
-            Player target = playerGroup.find(p -> p.name.equals(arg[0]));
+            boolean add = arg[0].equals("add");
+
+            PlayerInfo target;
+            Player playert = playerGroup.find(p -> p.name.equals(arg[1]));
+            if(playert != null){
+                target = playert.getInfo();
+            }else{
+                target = netServer.admins.getInfoOptional(arg[1]);
+                playert = playerGroup.find(p -> p.getInfo() == target);
+            }
 
             if(target != null){
-                netServer.admins.unAdminPlayer(target.uuid);
-                target.isAdmin = false;
-                info("Un-admin-ed player: {0}", arg[0]);
+                if(add){
+                    netServer.admins.adminPlayer(target.id, target.adminUsid);
+                }else{
+                    netServer.admins.unAdminPlayer(target.id);
+                }
+                if(playert != null) playert.isAdmin = add;
+                info("Changed admin status of player: &ly{0}", target.lastName);
             }else{
-                info("Nobody with that name could be found.");
+                err("Nobody with that name or ID could be found. If adding an admin by name, make sure they're online; otherwise, use their UUID.");
             }
         });
 
@@ -680,6 +715,18 @@ public class ServerControl implements ApplicationListener{
                 info("&lyAdmins:");
                 for(PlayerInfo info : admins){
                     info(" &lm {0} /  ID: '{1}' / IP: '{2}'", info.lastName, info.id, info.lastIP);
+                }
+            }
+        });
+
+        handler.register("players", "List all players currently in game.", arg -> {
+            if(playerGroup.size() == 0){
+                info("No players are currently in the server.");
+            }else{
+                info("&lyPlayers: {0}", playerGroup.size());
+                for(Player user : playerGroup){
+                    PlayerInfo userInfo = user.getInfo();
+                    info(" &lm {0} /  ID: '{1}' / IP: '{2}' / Admin: '{3}'", userInfo.lastName, userInfo.id, userInfo.lastIP, userInfo.admin);
                 }
             }
         });
@@ -774,6 +821,22 @@ public class ServerControl implements ApplicationListener{
             }
         });
 
+        handler.register("search", "<name...>", "Search players who have used part of a name.", arg -> {
+
+            ObjectSet<PlayerInfo> infos = netServer.admins.searchNames(arg[0]);
+
+            if(infos.size > 0){
+                info("&lgPlayers found: {0}", infos.size);
+
+                int i = 0;
+                for(PlayerInfo info : infos){
+                    info("- &lc[{0}] &ly'{1}'&lc / &lm{2}", i++, info.lastName, info.id);
+                }
+            }else{
+                info("Nobody with that name could be found.");
+            }
+        });
+
         handler.register("gc", "Trigger a grabage struct. Testing only.", arg -> {
             int pre = (int)(Core.app.getJavaHeap() / 1024 / 1024);
             System.gc();
@@ -782,7 +845,6 @@ public class ServerControl implements ApplicationListener{
         });
 
         mods.eachClass(p -> p.registerServerCommands(handler));
-        mods.eachClass(p -> p.registerClientCommands(netServer.clientCommands));
     }
 
     private void readCommands(){

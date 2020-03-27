@@ -134,27 +134,17 @@ public class GenericCrafter extends Block{
         return outputItem != null;
     }
 
-
-
     @Override
     public boolean shouldConsume(Tile tile){
         if(outputItem != null && tile.entity.items.get(outputItem.item) >= itemCapacity){
             return false;
         }
-        return outputLiquid == null || !(tile.entity.liquids.get(outputLiquid.liquid) >= liquidCapacity);
+        return outputLiquid == null || !(tile.entity.liquids.get(outputLiquid.liquid) >= liquidCapacity - 0.001f);
     }
 
     @Override
     public int getMaximumAccepted(Tile tile, Item item){
         return itemCapacity;
-    }
-
-    public Item outputItem(){
-        return outputItem == null ? null : outputItem.item;
-    }
-
-    public Liquid outputLiquid(){
-        return outputLiquid == null ? null : outputLiquid.liquid;
     }
 
     public static class GenericCrafterEntity extends TileEntity{
