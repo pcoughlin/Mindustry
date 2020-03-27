@@ -1,19 +1,29 @@
 package mindustry.world;
 
+import arc.func.*;
+import arc.math.geom.*;
 import arc.util.ArcAnnotate.*;
 
 import java.util.*;
 
 /** A tile container. */
 public class Tiles implements Iterable<Tile>{
+    public final int width, height;
+
     private final Tile[] array;
-    private final int width, height;
-    private final TileIterator iterator = new TileIterator();
 
     public Tiles(int width, int height){
         this.array = new Tile[width * height];
         this.width = width;
         this.height = height;
+    }
+
+    public void each(Intc2 cons){
+        for(int x = 0; x < width; x++){
+            for(int y = 0; y < height; y++){
+                cons.get(x, y);
+            }
+        }
     }
 
     /** fills this tile set with empty air tiles. */
@@ -51,21 +61,19 @@ public class Tiles implements Iterable<Tile>{
 
     /** @return a tile at an int position (not equivalent to geti) */
     public @Nullable Tile getp(int pos){
-        return get(Pos.x(pos), Pos.y(pos));
+        return get(Point2.x(pos), Point2.y(pos));
     }
 
-    public int width(){
-        return width;
-    }
-
-    public int height(){
-        return height;
+    public void each(Cons<Tile> cons){
+        for(Tile tile : array){
+            cons.get(tile);
+        }
     }
 
     @Override
     public Iterator<Tile> iterator(){
-        iterator.index = 0;
-        return iterator;
+        //iterating through the entire map is expensive anyway, so a new allocation doesn't make much of a difference
+        return new TileIterator();
     }
 
     private class TileIterator implements Iterator<Tile>{

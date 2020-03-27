@@ -10,11 +10,9 @@ import arc.util.Structs;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
 import mindustry.gen.TileOp;
-import mindustry.io.LegacyMapIO;
 import mindustry.io.MapIO;
 import mindustry.maps.Map;
 import mindustry.world.*;
-import mindustry.world.blocks.BlockPart;
 
 import static mindustry.Vars.*;
 
@@ -65,29 +63,14 @@ public class MapEditor{
         reset();
 
         createTiles(pixmap.getWidth(), pixmap.getHeight());
-        load(() -> LegacyMapIO.readPixmap(pixmap, tiles()));
+        load(() -> MapIO.readImage(pixmap, tiles()));
         renderer.resize(width(), height());
     }
 
     //adds missing blockparts
     //TODO remove, may not be necessary with blockpart refactor later
     public void checkLinkedTiles(){
-        Tiles tiles = world.tiles;
-
-        //clear old parts
-        for(Tile tile : tiles){
-            if(tile.block() instanceof BlockPart){
-                tile.setBlock(Blocks.air);
-            }
-        }
-
-        //re-add them
-        for(Tile tile : tiles){
-            if(tile.block().isMultiblock()){
-                world.setBlock(tile, tile.block(), tile.getTeam());
-            }
-
-        }
+        //TODO actually remove
     }
 
     public void load(Runnable r){
@@ -154,6 +137,7 @@ public class MapEditor{
             int offsetx = -(drawBlock.size - 1) / 2;
             int offsety = -(drawBlock.size - 1) / 2;
 
+            //TODO this is completely unnecessary now!
             for(int dx = 0; dx < drawBlock.size; dx++){
                 for(int dy = 0; dy < drawBlock.size; dy++){
                     int worldx = dx + offsetx + x;
@@ -165,7 +149,7 @@ public class MapEditor{
                         Block block = tile.block();
 
                         //bail out if there's anything blocking the way
-                        if(block.isMultiblock() || block instanceof BlockPart){
+                        if(block.isMultiblock()){
                             return;
                         }
 
@@ -174,7 +158,7 @@ public class MapEditor{
                 }
             }
 
-            world.setBlock(tile(x, y), drawBlock, drawTeam);
+            tile(x, y).setBlock(drawBlock, drawTeam, 0);
         }else{
             boolean isFloor = drawBlock.isFloor() && drawBlock != Blocks.air;
 
@@ -182,9 +166,10 @@ public class MapEditor{
                 if(!tester.get(tile)) return;
 
                 //remove linked tiles blocking the way
-                if(!isFloor && (tile.isLinked() || tile.block().isMultiblock())){
-                    world.removeBlock(tile.link());
-                }
+                //TODO also unnecessary
+                //if(!isFloor && (tile.isLinked() || tile.block().isMultiblock())){
+                //    tile.link().remove();
+                //}
 
                 if(isFloor){
                     tile.setFloor(drawBlock.asFloor());
@@ -307,8 +292,8 @@ public class MapEditor{
 
     class Context implements WorldContext{
         @Override
-        public Tile tile(int x, int y){
-            return world.tile(x, y);
+        public Tile tile(int index){
+            return world.tiles.geti(index);
         }
 
         @Override

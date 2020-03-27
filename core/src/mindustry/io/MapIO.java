@@ -1,9 +1,10 @@
 package mindustry.io;
 
-import arc.struct.*;
 import arc.files.*;
 import arc.graphics.*;
 import arc.graphics.Pixmap.*;
+import arc.math.geom.*;
+import arc.struct.*;
 import arc.util.io.*;
 import mindustry.content.*;
 import mindustry.core.*;
@@ -18,7 +19,6 @@ import java.util.zip.*;
 import static mindustry.Vars.*;
 
 /** Reads and writes map files. */
-//TODO does this class even need to exist??? move to Maps?
 public class MapIO{
     private static final int[] pngHeader = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
 
@@ -74,13 +74,13 @@ public class MapIO{
 
             Pixmap floors = new Pixmap(map.width, map.height, Format.RGBA8888);
             Pixmap walls = new Pixmap(map.width, map.height, Format.RGBA8888);
-            int black = Color.rgba8888(Color.black);
+            int black = 255;
             int shade = Color.rgba8888(0f, 0f, 0f, 0.5f);
             CachedTile tile = new CachedTile(){
                 @Override
                 public void setBlock(Block type){
                     super.setBlock(type);
-                    int c = colorFor(Blocks.air, block(), Blocks.air, getTeam());
+                    int c = colorFor(Blocks.air, block(), Blocks.air, team());
                     if(c != black){
                         walls.draw(x, floors.getHeight() - 1 - y, c);
                         floors.draw(x, floors.getHeight() - 1 - y + 1, shade);
@@ -91,7 +91,7 @@ public class MapIO{
                 public void setTeam(Team team){
                     super.setTeam(team);
                     if(block instanceof CoreBlock){
-                        map.teams.add(team.ordinal());
+                        map.teams.add(team.id);
                     }
                 }
             };
@@ -104,9 +104,9 @@ public class MapIO{
                 @Override public void end(){}
 
                 @Override
-                public Tile tile(int x, int y){
-                    tile.x = (short)x;
-                    tile.y = (short)y;
+                public Tile tile(int index){
+                    tile.x = (short)(index % map.width);
+                    tile.y = (short)(index / map.width);
                     return tile;
                 }
 
@@ -133,11 +133,11 @@ public class MapIO{
     }
 
     public static Pixmap generatePreview(Tiles tiles){
-        Pixmap pixmap = new Pixmap(tiles.width(), tiles.height(), Format.RGBA8888);
+        Pixmap pixmap = new Pixmap(tiles.width, tiles.height, Format.RGBA8888);
         for(int x = 0; x < pixmap.getWidth(); x++){
             for(int y = 0; y < pixmap.getHeight(); y++){
                 Tile tile = tiles.getn(x, y);
-                pixmap.draw(x, pixmap.getHeight() - 1 - y, colorFor(tile.floor(), tile.block(), tile.overlay(), tile.getTeam()));
+                pixmap.draw(x, pixmap.getHeight() - 1 - y, colorFor(tile.floor(), tile.block(), tile.overlay(), tile.team()));
             }
         }
         return pixmap;
@@ -145,12 +145,47 @@ public class MapIO{
 
     public static int colorFor(Block floor, Block wall, Block ore, Team team){
         if(wall.synthetic()){
-            return team.intColor;
+            return team.color.rgba();
         }
-        return Color.rgba8888(wall.solid ? wall.color : ore == Blocks.air ? floor.color : ore.color);
+        return (wall.solid ? wall.mapColor : ore == Blocks.air ? floor.mapColor : ore.mapColor).rgba();
     }
 
-    interface TileProvider{
-        Tile get(int x, int y);
+    public static Pixmap writeImage(Tiles tiles){
+        Pixmap pix = new Pixmap(tiles.width, tiles.height);
+        for(Tile tile : tiles){
+            //while synthetic blocks are possible, most of their data is lost, so in order to avoid questions like
+            //"why is there air under my drill" and "why are all my conveyors facing right", they are disabled
+            int color = tile.block().hasColor && !tile.block().synthetic() ? tile.block().mapColor.rgba() : tile.floor().mapColor.rgba();
+            pix.draw(tile.x, tiles.height - 1 - tile.y, color);
+        }
+        return pix;
+    }
+
+    public static void readImage(Pixmap pixmap, Tiles tiles){
+        for(Tile tile : tiles){
+            int color = pixmap.getPixel(tile.x, pixmap.getHeight() - 1 - tile.y);
+            Block block = ColorMapper.get(color);
+
+            if(block.isFloor()){
+                tile.setFloor(block.asFloor());
+            }else if(block.isMultiblock()){
+                tile.setBlock(block, Team.derelict, 0);
+            }else{
+                tile.setBlock(block);
+            }
+        }
+
+        //guess at floors by grabbing a random adjacent floor
+        for(Tile tile : tiles){
+            if(tile.floor() == Blocks.air && tile.block() != Blocks.air){
+                for(Point2 p : Geometry.d4){
+                    Tile other = tiles.get(tile.x + p.x, tile.y + p.y);
+                    if(other != null && other.floor() != Blocks.air){
+                        tile.setFloor(other.floor());
+                        break;
+                    }
+                }
+            }
+        }
     }
 }

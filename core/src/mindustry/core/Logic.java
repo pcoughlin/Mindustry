@@ -1,22 +1,19 @@
 package mindustry.core;
 
 import arc.*;
-import mindustry.annotations.Annotations.*;
 import arc.util.*;
+import mindustry.annotations.Annotations.*;
 import mindustry.content.*;
 import mindustry.core.GameState.*;
 import mindustry.ctype.*;
-import mindustry.entities.*;
-import mindustry.entities.type.*;
+import mindustry.gen.*;
 import mindustry.game.EventType.*;
 import mindustry.game.*;
 import mindustry.game.Teams.*;
-import mindustry.gen.*;
 import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.*;
 import mindustry.world.blocks.BuildBlock.*;
-import mindustry.world.blocks.power.*;
 
 import java.util.*;
 
@@ -33,13 +30,15 @@ import static mindustry.Vars.*;
 public class Logic implements ApplicationListener{
 
     public Logic(){
-        Events.on(WaveEvent.class, event -> {
-            for(Player p : playerGroup.all()){
-                p.respawns = state.rules.respawns;
-            }
+        Events.on(WorldLoadEvent.class, event -> {
+            //TODO remove later
+            //Weathers.snow.create();
+        });
 
-            if(world.isZone()){
-                world.getZone().updateWave(state.wave);
+        Events.on(WaveEvent.class, event -> {
+            if(state.isCampaign()){
+                //TODO implement
+                //state.getSector().updateWave(state.wave);
             }
         });
 
@@ -47,8 +46,8 @@ public class Logic implements ApplicationListener{
             //blocks that get broken are appended to the team's broken block queue
             Tile tile = event.tile;
             Block block = tile.block();
-            //skip null entities or nukes, for obvious reasons
-            if(tile.entity == null || tile.block() instanceof NuclearReactor) return;
+            //skip null entities or un-rebuildables, for obvious reasons; also skip client since they can't modify these requests
+            if(tile.entity == null || !tile.block().rebuildable || net.client()) return;
 
             if(block instanceof BuildBlock){
 
@@ -63,7 +62,7 @@ public class Logic implements ApplicationListener{
                 }
             }
 
-            TeamData data = state.teams.get(tile.getTeam());
+            TeamData data = state.teams.get(tile.team());
 
             //remove existing blocks that have been placed here.
             //painful O(n) iteration + copy
@@ -100,19 +99,20 @@ public class Logic implements ApplicationListener{
         }
     }
 
+    /** Adds starting items, resets wave time, and sets state to playing. */
     public void play(){
         state.set(State.playing);
         state.wavetime = state.rules.waveSpacing * 2; //grace period of 2x wave time before game starts
         Events.fire(new PlayEvent());
 
         //add starting items
-        if(!world.isZone()){
-            for(Team team : Team.all){
-                if(!state.teams.get(team).cores.isEmpty()){
-                    TileEntity entity = state.teams.get(team).cores.first().entity;
-                    entity.items.clear();
+        if(!state.isCampaign()){
+            for(TeamData team : state.teams.getActive()){
+                if(team.hasCore()){
+                    Tilec entity = team.core();
+                    entity.items().clear();
                     for(ItemStack stack : state.rules.loadout){
-                        entity.items.add(stack.item, stack.amount);
+                        entity.items().add(stack.item, stack.amount);
                     }
                 }
             }
@@ -127,39 +127,37 @@ public class Logic implements ApplicationListener{
         state.rules = new Rules();
         state.stats = new Stats();
 
-        entities.clear();
+        Groups.all.clear();
         Time.clear();
-        TileEntity.sleepingEntities = 0;
-
         Events.fire(new ResetEvent());
     }
 
     public void runWave(){
         spawner.spawnEnemies();
         state.wave++;
-        state.wavetime = world.isZone() && world.getZone().isLaunchWave(state.wave) ? state.rules.waveSpacing * state.rules.launchWaveMultiplier : state.rules.waveSpacing;
+        state.wavetime = state.hasSector() && state.getSector().isLaunchWave(state.wave) ? state.rules.waveSpacing * state.rules.launchWaveMultiplier : state.rules.waveSpacing;
 
         Events.fire(new WaveEvent());
     }
 
     private void checkGameOver(){
-        if(!state.rules.attackMode && state.teams.get(defaultTeam).cores.size == 0 && !state.gameOver){
+        if(!state.rules.attackMode && state.teams.playerCores().size == 0 && !state.gameOver){
             state.gameOver = true;
-            Events.fire(new GameOverEvent(waveTeam));
+            Events.fire(new GameOverEvent(state.rules.waveTeam));
         }else if(state.rules.attackMode){
             Team alive = null;
 
-            for(Team team : Team.all){
-                if(state.teams.get(team).cores.size > 0){
+            for(TeamData team : state.teams.getActive()){
+                if(team.hasCore()){
                     if(alive != null){
                         return;
                     }
-                    alive = team;
+                    alive = team.team;
                 }
             }
 
             if(alive != null && !state.gameOver){
-                if(world.isZone() && alive == defaultTeam){
+                if(state.isCampaign() && alive == state.rules.defaultTeam){
                     //in attack maps, a victorious game over is equivalent to a launch
                     Call.launchZone();
                 }else{
@@ -176,28 +174,28 @@ public class Logic implements ApplicationListener{
             ui.hudfrag.showLaunch();
         }
 
-        for(Tile tile : state.teams.get(defaultTeam).cores){
-            Effects.effect(Fx.launch, tile);
+        for(Tilec tile : state.teams.playerCores()){
+            Fx.launch.at(tile);
         }
 
-        if(world.getZone() != null){
-            world.getZone().setLaunched();
+        if(state.isCampaign()){
+            //TODO implement
+            //state.getSector().setLaunched();
         }
 
         Time.runTask(30f, () -> {
-            for(Tile tile : state.teams.get(defaultTeam).cores){
+            for(Tilec entity : state.teams.playerCores()){
                 for(Item item : content.items()){
-                    if(tile == null || tile.entity == null || tile.entity.items == null) continue;
-                    data.addItem(item, tile.entity.items.get(item));
-                    Events.fire(new LaunchItemEvent(item, tile.entity.items.get(item)));
+                    data.addItem(item, entity.items().get(item));
+                    Events.fire(new LaunchItemEvent(item, entity.items().get(item)));
                 }
-                world.removeBlock(tile);
+                entity.tile().remove();
             }
             state.launched = true;
             state.gameOver = true;
             Events.fire(new LaunchEvent());
             //manually fire game over event now
-            Events.fire(new GameOverEvent(defaultTeam));
+            Events.fire(new GameOverEvent(state.rules.defaultTeam));
         });
     }
 
@@ -210,14 +208,22 @@ public class Logic implements ApplicationListener{
 
     @Override
     public void update(){
+        Events.fire(Trigger.update);
+        universe.updateGlobal();
 
-        if(!state.is(State.menu)){
+        if(state.isGame()){
+            if(!net.client()){
+                state.enemies = Groups.unit.count(b -> b.team() == state.rules.waveTeam && b.type().isCounted);
+            }
 
             if(!state.isPaused()){
+                if(state.isCampaign()){
+                    universe.update();
+                }
                 Time.update();
 
                 if(state.rules.waves && state.rules.waveTimer && !state.gameOver){
-                    if(!state.rules.waitForWaveToEnd || unitGroups[waveTeam.ordinal()].size() == 0){
+                    if(!state.rules.waitForWaveToEnd || state.enemies == 0){
                         state.wavetime = Math.max(state.wavetime - Time.delta(), 0);
                     }
                 }
@@ -226,49 +232,10 @@ public class Logic implements ApplicationListener{
                     runWave();
                 }
 
-                if(!headless){
-                    effectGroup.update();
-                    groundEffectGroup.update();
-                }
-
-                if(!state.isEditor()){
-                    for(EntityGroup group : unitGroups){
-                        group.update();
-                    }
-
-                    puddleGroup.update();
-                    shieldGroup.update();
-                    bulletGroup.update();
-                    tileGroup.update();
-                    fireGroup.update();
-                    weatherGroup.update();
-                }else{
-                    for(EntityGroup<?> group : unitGroups){
-                        group.updateEvents();
-                        collisions.updatePhysics(group);
-                    }
-                }
-
-
-                playerGroup.update();
-
-                //effect group only contains item transfers in the headless version, update it!
-                if(headless){
-                    effectGroup.update();
-                }
-
-                if(!state.isEditor()){
-
-                    for(EntityGroup group : unitGroups){
-                        if(group.isEmpty()) continue;
-                        collisions.collideGroups(bulletGroup, group);
-                    }
-
-                    collisions.collideGroups(bulletGroup, playerGroup);
-                }
+                Groups.update();
             }
 
-            if(!net.client() && !world.isInvalidMap() && !state.isEditor()){
+            if(!net.client() && !world.isInvalidMap() && !state.isEditor() && state.rules.canGameOver){
                 checkGameOver();
             }
         }

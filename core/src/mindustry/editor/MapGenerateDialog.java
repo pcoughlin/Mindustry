@@ -21,7 +21,7 @@ import mindustry.maps.filters.GenerateFilter.*;
 import mindustry.ui.*;
 import mindustry.ui.dialogs.*;
 import mindustry.world.*;
-import mindustry.world.blocks.*;
+import mindustry.world.blocks.environment.*;
 
 import static mindustry.Vars.*;
 
@@ -52,7 +52,7 @@ public class MapGenerateDialog extends FloatingDialog{
     private CachedTile ctile = new CachedTile(){
         //nothing.
         @Override
-        protected void changed(){
+        protected void changed(Team team){
 
         }
     };
@@ -124,7 +124,7 @@ public class MapGenerateDialog extends FloatingDialog{
                     Tile tile = editor.tile(x, y);
                     input.apply(x, y, tile.floor(), tile.block(), tile.overlay());
                     filter.apply(input);
-                    writeTiles[x][y].set(input.floor, input.block, input.ore, tile.getTeam(), tile.rotation());
+                    writeTiles[x][y].set(input.floor, input.block, input.ore, tile.team(), tile.rotation());
                 }
             }
 
@@ -138,7 +138,7 @@ public class MapGenerateDialog extends FloatingDialog{
                         tile.rotation(write.rotation);
                         tile.setFloor((Floor)content.block(write.floor));
                         tile.setBlock(content.block(write.block));
-                        tile.setTeam(Team.all[write.team]);
+                        tile.setTeam(Team.get(write.team));
                         tile.setOverlay(content.block(write.ore));
                     }
                 }
@@ -235,24 +235,24 @@ public class MapGenerateDialog extends FloatingDialog{
                     t.table(b -> {
                         ImageButtonStyle style = Styles.cleari;
                         b.defaults().size(50f);
-                        b.addImageButton(Icon.refreshSmall, style, () -> {
+                        b.addImageButton(Icon.refresh, style, () -> {
                             filter.randomize();
                             update();
                         });
 
-                        b.addImageButton(Icon.arrowUpSmall, style, () -> {
+                        b.addImageButton(Icon.upOpen, style, () -> {
                             int idx = filters.indexOf(filter);
                             filters.swap(idx, Math.max(0, idx - 1));
                             rebuildFilters();
                             update();
                         });
-                        b.addImageButton(Icon.arrowDownSmall, style, () -> {
+                        b.addImageButton(Icon.downOpen, style, () -> {
                             int idx = filters.indexOf(filter);
                             filters.swap(idx, Math.min(filters.size - 1, idx + 1));
                             rebuildFilters();
                             update();
                         });
-                        b.addImageButton(Icon.trashSmall, style, () -> {
+                        b.addImageButton(Icon.trash, style, () -> {
                             filters.remove(filter);
                             rebuildFilters();
                             update();
@@ -367,7 +367,7 @@ public class MapGenerateDialog extends FloatingDialog{
                         GenTile tile = buffer1[px][py];
                         input.apply(x, y, content.block(tile.floor), content.block(tile.block), content.block(tile.ore));
                         filter.apply(input);
-                        buffer2[px][py].set(input.floor, input.block, input.ore, Team.all[tile.team], tile.rotation);
+                        buffer2[px][py].set(input.floor, input.block, input.ore, Team.get(tile.team), tile.rotation);
                     });
 
                     pixmap.each((px, py) -> buffer1[px][py].set(buffer2[px][py]));
@@ -411,7 +411,7 @@ public class MapGenerateDialog extends FloatingDialog{
             this.floor = floor.id;
             this.block = wall.id;
             this.ore = ore.id;
-            this.team = (byte)team.ordinal();
+            this.team = (byte) team.id;
             this.rotation = (byte)rotation;
         }
 
@@ -424,7 +424,7 @@ public class MapGenerateDialog extends FloatingDialog{
         }
 
         public GenTile set(Tile other){
-            set(other.floor(), other.block(), other.overlay(), other.getTeam(), other.rotation());
+            set(other.floor(), other.block(), other.overlay(), other.team(), other.rotation());
             return this;
         }
 
@@ -433,7 +433,7 @@ public class MapGenerateDialog extends FloatingDialog{
             ctile.setBlock(content.block(block));
             ctile.setOverlay(content.block(ore));
             ctile.rotation(rotation);
-            ctile.setTeam(Team.all[team]);
+            ctile.setTeam(Team.get(team));
             return ctile;
         }
     }

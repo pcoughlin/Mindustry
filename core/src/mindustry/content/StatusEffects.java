@@ -1,13 +1,12 @@
 package mindustry.content;
 
 import arc.*;
+import arc.graphics.*;
 import arc.math.Mathf;
-import mindustry.entities.Effects;
 import mindustry.ctype.ContentList;
 import mindustry.game.EventType.*;
 import mindustry.type.StatusEffect;
-
-import static mindustry.Vars.waveTeam;
+import static mindustry.Vars.*;
 
 public class StatusEffects implements ContentList{
     public static StatusEffect none, burning, freezing, wet, melting, tarred, overdrive, shielded, shocked, corroded, boss;
@@ -25,7 +24,7 @@ public class StatusEffects implements ContentList{
                 opposite(wet,freezing);
                 trans(tarred, ((unit, time, newTime, result) -> {
                     unit.damage(1f);
-                    Effects.effect(Fx.burning, unit.x + Mathf.range(unit.getSize() / 2f), unit.y + Mathf.range(unit.getSize() / 2f));
+                    Fx.burning.at(unit.x() + Mathf.range(unit.bounds() / 2f), unit.y() + Mathf.range(unit.bounds() / 2f));
                     result.set(this, Math.min(time + newTime, 300f));
                 }));
             });
@@ -42,13 +41,14 @@ public class StatusEffects implements ContentList{
         }};
 
         wet = new StatusEffect("wet"){{
+            color = Color.royal;
             speedMultiplier = 0.9f;
             effect = Fx.wet;
 
             init(() -> {
                 trans(shocked, ((unit, time, newTime, result) -> {
                     unit.damage(20f);
-                    if(unit.getTeam() == waveTeam){
+                    if(unit.team() == state.rules.waveTeam){
                         Events.fire(Trigger.shock);
                     }
                     result.set(this, time);

@@ -15,7 +15,6 @@ import mindustry.game.Team;
 import mindustry.graphics.IndexedRenderer;
 import mindustry.world.Block;
 import mindustry.world.Tile;
-import mindustry.world.blocks.BlockPart;
 
 import static mindustry.Vars.tilesize;
 
@@ -111,7 +110,7 @@ public class MapRenderer implements Disposable{
         IndexedRenderer mesh = chunks[x][y];
         Tile tile = editor.tiles().getn(wx, wy);
 
-        Team team = tile.getTeam();
+        Team team = tile.team();
         Block floor = tile.floor();
         Block wall = tile.block();
 
@@ -120,7 +119,7 @@ public class MapRenderer implements Disposable{
         int idxWall = (wx % chunkSize) + (wy % chunkSize) * chunkSize;
         int idxDecal = (wx % chunkSize) + (wy % chunkSize) * chunkSize + chunkSize * chunkSize;
 
-        if(wall != Blocks.air && (wall.synthetic() || wall instanceof BlockPart)){
+        if(wall != Blocks.air && wall.synthetic()){
             region = !Core.atlas.isFound(wall.editorIcon()) ? Core.atlas.find("clear-editor") : wall.editorIcon();
 
             if(wall.rotate){

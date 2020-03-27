@@ -45,7 +45,7 @@ public class ScriptConsoleFragment extends Table{
         font = Fonts.def;
 
         visible(() -> {
-            if(input.keyTap(Binding.console) && !Vars.net.client() && (scene.getKeyboardFocus() == chatfield || scene.getKeyboardFocus() == null)){
+            if(input.keyTap(Binding.console)  && (scene.getKeyboardFocus() == chatfield || scene.getKeyboardFocus() == null)){
                 shown = !shown;
                 if(shown && !open && enableConsole){
                     toggle();

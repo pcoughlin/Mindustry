@@ -1,15 +1,13 @@
 package mindustry.editor;
 
-import arc.struct.IntArray;
 import arc.func.*;
-import arc.math.Mathf;
-import arc.math.geom.Bresenham2;
-import arc.util.Structs;
-import mindustry.Vars;
-import mindustry.content.Blocks;
-import mindustry.game.Team;
+import arc.math.*;
+import arc.math.geom.*;
+import arc.struct.*;
+import arc.util.*;
+import mindustry.content.*;
+import mindustry.game.*;
 import mindustry.world.*;
-import mindustry.world.blocks.BlockPart;
 
 public enum EditorTool{
     zoom,
@@ -17,7 +15,7 @@ public enum EditorTool{
         public void touched(MapEditor editor, int x, int y){
             if(!Structs.inBounds(x, y, editor.width(), editor.height())) return;
 
-            Tile tile = editor.tile(x, y).link();
+            Tile tile = editor.tile(x, y);
             editor.drawBlock = tile.block() == Blocks.air ? tile.overlay() == Blocks.air ? tile.floor() : tile.overlay() : tile.block();
         }
     },
@@ -64,7 +62,7 @@ public enum EditorTool{
                 editor.drawBlocks(x, y, true, tile -> true);
             }else if(mode == 2){
                 //draw teams
-                editor.drawCircle(x, y, tile -> tile.link().setTeam(editor.drawTeam));
+                editor.drawCircle(x, y, tile -> tile.setTeam(editor.drawTeam));
             }
 
         }
@@ -80,7 +78,7 @@ public enum EditorTool{
             editor.drawCircle(x, y, tile -> {
                 if(mode == -1){
                     //erase block
-                    Vars.world.removeBlock(tile);
+                    tile.remove();
                 }else if(mode == 0){
                     //erase ore
                     tile.clearOverlay();
@@ -109,7 +107,7 @@ public enum EditorTool{
             //mode 0 or 1, fill everything with the floor/tile or replace it
             if(mode == 0 || mode == -1){
                 //can't fill parts or multiblocks
-                if(tile.block() instanceof BlockPart || tile.block().isMultiblock()){
+                if(tile.block().isMultiblock()){
                     return;
                 }
 
@@ -119,7 +117,7 @@ public enum EditorTool{
                 if(editor.drawBlock.isOverlay()){
                     Block dest = tile.overlay();
                     if(dest == editor.drawBlock) return;
-                    tester = t -> t.overlay() == dest;
+                    tester = t -> t.overlay() == dest && !t.floor().isLiquid;
                     setter = t -> t.setOverlay(editor.drawBlock);
                 }else if(editor.drawBlock.isFloor()){
                     Block dest = tile.floor();
@@ -138,10 +136,10 @@ public enum EditorTool{
             }else if(mode == 1){ //mode 1 is team fill
 
                 //only fill synthetic blocks, it's meaningless otherwise
-                if(tile.link().synthetic()){
-                    Team dest = tile.getTeam();
+                if(tile.synthetic()){
+                    Team dest = tile.team();
                     if(dest == editor.drawTeam) return;
-                    fill(editor, x, y, false, t -> t.getTeamID() == dest.ordinal() && t.link().synthetic(), t -> t.setTeam(editor.drawTeam));
+                    fill(editor, x, y, false, t -> t.getTeamID() == (int)dest.id && t.synthetic(), t -> t.setTeam(editor.drawTeam));
                 }
             }
         }
@@ -165,35 +163,44 @@ public enum EditorTool{
                 int x1;
 
                 stack.clear();
-                stack.add(Pos.get(x, y));
+                stack.add(Point2.pack(x, y));
 
-                while(stack.size > 0){
-                    int popped = stack.pop();
-                    x = Pos.x(popped);
-                    y = Pos.y(popped);
+                try{
+                    while(stack.size > 0 && stack.size < width*height){
+                        int popped = stack.pop();
+                        x = Point2.x(popped);
+                        y = Point2.y(popped);
 
-                    x1 = x;
-                    while(x1 >= 0 && tester.get(editor.tile(x1, y))) x1--;
-                    x1++;
-                    boolean spanAbove = false, spanBelow = false;
-                    while(x1 < width && tester.get(editor.tile(x1, y))){
-                        filler.get(editor.tile(x1, y));
-
-                        if(!spanAbove && y > 0 && tester.get(editor.tile(x1, y - 1))){
-                            stack.add(Pos.get(x1, y - 1));
-                            spanAbove = true;
-                        }else if(spanAbove && !tester.get(editor.tile(x1, y - 1))){
-                            spanAbove = false;
-                        }
-
-                        if(!spanBelow && y < height - 1 && tester.get(editor.tile(x1, y + 1))){
-                            stack.add(Pos.get(x1, y + 1));
-                            spanBelow = true;
-                        }else if(spanBelow && y < height - 1 && !tester.get(editor.tile(x1, y + 1))){
-                            spanBelow = false;
-                        }
+                        x1 = x;
+                        while(x1 >= 0 && tester.get(editor.tile(x1, y))) x1--;
                         x1++;
+                        boolean spanAbove = false, spanBelow = false;
+                        while(x1 < width && tester.get(editor.tile(x1, y))){
+                            filler.get(editor.tile(x1, y));
+
+                            if(!spanAbove && y > 0 && tester.get(editor.tile(x1, y - 1))){
+                                stack.add(Point2.pack(x1, y - 1));
+                                spanAbove = true;
+                            }else if(spanAbove && !tester.get(editor.tile(x1, y - 1))){
+                                spanAbove = false;
+                            }
+
+                            if(!spanBelow && y < height - 1 && tester.get(editor.tile(x1, y + 1))){
+                                stack.add(Point2.pack(x1, y + 1));
+                                spanBelow = true;
+                            }else if(spanBelow && y < height - 1 && !tester.get(editor.tile(x1, y + 1))){
+                                spanBelow = false;
+                            }
+                            x1++;
+                        }
                     }
+                    stack.clear();
+                }catch(OutOfMemoryError e){
+                    //hack
+                    stack = null;
+                    System.gc();
+                    e.printStackTrace();
+                    stack = new IntArray();
                 }
             }
         }

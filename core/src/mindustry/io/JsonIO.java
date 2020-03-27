@@ -5,7 +5,6 @@ import arc.util.serialization.Json.*;
 import mindustry.*;
 import mindustry.content.*;
 import mindustry.ctype.*;
-import mindustry.ctype.ContentType;
 import mindustry.game.*;
 import mindustry.type.*;
 import mindustry.world.*;
@@ -20,7 +19,7 @@ public class JsonIO{
 
         @Override
         public void writeValue(Object value, Class knownType, Class elementType){
-            if(value instanceof mindustry.ctype.MappableContent){
+            if(value instanceof MappableContent){
                 try{
                     getWriter().value(((MappableContent)value).name);
                 }catch(IOException e){
@@ -69,14 +68,27 @@ public class JsonIO{
         json.setElementType(Rules.class, "spawns", SpawnGroup.class);
         json.setElementType(Rules.class, "loadout", ItemStack.class);
 
-        json.setSerializer(Zone.class, new Serializer<Zone>(){
+        json.setSerializer(Sector.class, new Serializer<Sector>(){
             @Override
-            public void write(Json json, Zone object, Class knownType){
+            public void write(Json json, Sector object, Class knownType){
+                json.writeValue(object.planet.name + "-" + object.id);
+            }
+
+            @Override
+            public Sector read(Json json, JsonValue jsonData, Class type){
+                String[] split = jsonData.asString().split("-");
+                return Vars.content.<Planet>getByName(ContentType.planet, split[0]).sectors.get(Integer.parseInt(split[1]));
+            }
+        });
+
+        json.setSerializer(SectorPreset.class, new Serializer<SectorPreset>(){
+            @Override
+            public void write(Json json, SectorPreset object, Class knownType){
                 json.writeValue(object.name);
             }
 
             @Override
-            public Zone read(Json json, JsonValue jsonData, Class type){
+            public SectorPreset read(Json json, JsonValue jsonData, Class type){
                 return Vars.content.getByName(ContentType.zone, jsonData.asString());
             }
         });
@@ -92,6 +104,18 @@ public class JsonIO{
                 if(jsonData.asString() == null) return Items.copper;
                 Item i =  Vars.content.getByName(ContentType.item, jsonData.asString());
                 return i == null ? Items.copper : i;
+            }
+        });
+
+        json.setSerializer(Team.class, new Serializer<Team>(){
+            @Override
+            public void write(Json json, Team object, Class knownType){
+                json.writeValue(object.id);
+            }
+
+            @Override
+            public Team read(Json json, JsonValue jsonData, Class type){
+                return Team.get(jsonData.asInt());
             }
         });
 

@@ -12,6 +12,7 @@ import arc.util.serialization.JsonValue.*;
 import arc.util.serialization.JsonWriter.*;
 import mindustry.*;
 import mindustry.core.*;
+import mindustry.gen.*;
 
 import java.io.*;
 import java.text.*;
@@ -21,13 +22,27 @@ import static mindustry.Vars.net;
 
 public class CrashSender{
 
+    public static void log(Throwable exception){
+        try{
+            Core.settings.getDataDirectory().child("crashes").child("crash_" + System.currentTimeMillis() + ".txt").writeString(Strings.parseException(exception, true));
+        }catch(Throwable ignored){
+        }
+
+        if(exception instanceof RuntimeException){
+            throw (RuntimeException)exception;
+        }
+        throw new RuntimeException(exception);
+    }
+
     public static void send(Throwable exception, Cons<File> writeListener){
 
         try{
             exception.printStackTrace();
 
             //don't create crash logs for custom builds, as it's expected
-            if(Version.build == -1 || (System.getProperty("user.name").equals("anuke") && "release".equals(Version.modifier))) return;
+            if(Version.build == -1 || (System.getProperty("user.name").equals("anuke") && "release".equals(Version.modifier))){
+                ret();
+            }
 
             //attempt to load version regardless
             if(Version.number == 0){
@@ -63,7 +78,7 @@ public class CrashSender{
             try{
                 //check crash report setting
                 if(!Core.settings.getBool("crashreport", true)){
-                    return;
+                    ret();
                 }
             }catch(Throwable ignored){
                 //if there's no settings init we don't know what the user wants but chances are it's an important crash, so send it anyway
@@ -72,14 +87,14 @@ public class CrashSender{
             try{
                 //check any mods - if there are any, don't send reports
                 if(Vars.mods != null && !Vars.mods.list().isEmpty()){
-                    return;
+                    ret();
                 }
             }catch(Throwable ignored){
             }
 
             //do not send exceptions that occur for versions that can't be parsed
             if(Version.number == 0){
-                return;
+                ret();
             }
 
             boolean netActive = false, netServer = false;
@@ -104,7 +119,7 @@ public class CrashSender{
             ex(() -> value.addChild("revision", new JsonValue(Version.revision)));
             ex(() -> value.addChild("net", new JsonValue(fn)));
             ex(() -> value.addChild("server", new JsonValue(fs)));
-            ex(() -> value.addChild("players", new JsonValue(Vars.playerGroup.size())));
+            ex(() -> value.addChild("players", new JsonValue(Groups.player.size())));
             ex(() -> value.addChild("state", new JsonValue(Vars.state.getState().name())));
             ex(() -> value.addChild("os", new JsonValue(System.getProperty("os.name") + "x" + (OS.is64Bit ? "64" : "32"))));
             ex(() -> value.addChild("trace", new JsonValue(parseException(exception))));
@@ -130,12 +145,16 @@ public class CrashSender{
                 while(!sent[0]){
                     Thread.sleep(30);
                 }
-            }catch(InterruptedException ignored){
-            }
+            }catch(InterruptedException ignored){}
         }catch(Throwable death){
             death.printStackTrace();
-            System.exit(1);
         }
+
+        ret();
+    }
+
+    private static void ret(){
+        System.exit(1);
     }
 
     private static void httpPost(String url, String content, Cons<HttpResponse> success, Cons<Throwable> failure){

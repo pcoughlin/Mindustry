@@ -1,34 +1,29 @@
 package mindustry.world;
 
-import mindustry.annotations.Annotations.Loc;
-import mindustry.annotations.Annotations.Remote;
-import arc.Core;
-import arc.Events;
-import arc.math.Mathf;
+import arc.*;
+import arc.math.*;
 import arc.math.geom.*;
-import mindustry.content.Blocks;
-import mindustry.entities.Units;
-import mindustry.game.EventType.BlockBuildBeginEvent;
-import mindustry.game.Team;
-import mindustry.world.blocks.BuildBlock;
-import mindustry.world.blocks.BuildBlock.BuildEntity;
+import mindustry.annotations.Annotations.*;
+import mindustry.content.*;
+import mindustry.entities.*;
+import mindustry.game.EventType.*;
+import mindustry.game.*;
+import mindustry.world.blocks.*;
+import mindustry.world.blocks.BuildBlock.*;
 
 import static mindustry.Vars.*;
 
 public class Build{
 
-    /** Returns block type that was broken, or null if unsuccesful. */
     @Remote(called = Loc.server)
     public static void beginBreak(Team team, int x, int y){
         if(!validBreak(team, x, y)){
             return;
         }
 
-        Tile tile = world.ltile(x, y);
+        Tile tile = world.tilec(x, y);
+        //this should never happen, but it doesn't hurt to check for links
         float prevPercent = 1f;
-
-        //just in case
-        if(tile == null) return;
 
         if(tile.entity != null){
             prevPercent = tile.entity.healthf();
@@ -38,9 +33,9 @@ public class Build{
         Block previous = tile.block();
         Block sub = BuildBlock.get(previous.size);
 
-        world.setBlock(tile, sub, team, rotation);
+        tile.setBlock(sub, team, rotation);
         tile.<BuildEntity>ent().setDeconstruct(previous);
-        tile.entity.health = tile.entity.maxHealth() * prevPercent;
+        tile.entity.health(tile.entity.maxHealth() * prevPercent);
 
         Core.app.post(() -> Events.fire(new BlockBuildBeginEvent(tile, team, true)));
     }
@@ -60,7 +55,7 @@ public class Build{
         Block previous = tile.block();
         Block sub = BuildBlock.get(result.size);
 
-        world.setBlock(tile, sub, team, rotation);
+        tile.setBlock(sub, team, rotation);
         tile.<BuildEntity>ent().setConstruct(previous, result);
 
         Core.app.post(() -> Events.fire(new BlockBuildBeginEvent(tile, team, false)));
@@ -72,7 +67,7 @@ public class Build{
             return false;
         }
 
-        if(state.rules.bannedBlocks.contains(type) && !(state.rules.waves && team == waveTeam)){
+        if(state.rules.bannedBlocks.contains(type) && !(state.rules.waves && team == state.rules.waveTeam)){
             return false;
         }
 
@@ -80,18 +75,18 @@ public class Build{
             return false;
         }
 
-        //check for enemy cores
-        for(Team enemy : state.teams.enemiesOf(team)){
-            for(Tile core : state.teams.get(enemy).cores){
-                if(Mathf.dst(x * tilesize + type.offset(), y * tilesize + type.offset(), core.drawx(), core.drawy()) < state.rules.enemyCoreBuildRadius + type.size * tilesize / 2f){
-                    return false;
-                }
-            }
+        if(state.teams.eachEnemyCore(team, core -> Mathf.dst(x * tilesize + type.offset(), y * tilesize + type.offset(), core.x(), core.y()) < state.rules.enemyCoreBuildRadius + type.size * tilesize / 2f)){
+            return false;
         }
 
         Tile tile = world.tile(x, y);
 
         if(tile == null) return false;
+
+        //ca check
+        if(world.getDarkness(x, y) >= 3){
+            return false;
+        }
 
         if(type.isMultiblock()){
             if(type.canReplace(tile.block()) && tile.block().size == type.size && type.canPlaceOn(tile) && tile.interactable(team)){
@@ -154,7 +149,7 @@ public class Build{
 
     /** Returns whether the tile at this position is breakable by this team */
     public static boolean validBreak(Team team, int x, int y){
-        Tile tile = world.ltile(x, y);
+        Tile tile = world.tile(x, y);
         return tile != null && tile.block().canBreak(tile) && tile.breakable() && tile.interactable(team);
     }
 }

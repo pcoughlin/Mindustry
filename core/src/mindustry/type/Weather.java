@@ -1,81 +1,59 @@
 package mindustry.type;
 
-import arc.util.ArcAnnotate.*;
+import arc.func.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.ctype.*;
-import mindustry.entities.*;
-import mindustry.entities.traits.*;
-import mindustry.entities.type.*;
-import mindustry.type.Weather.*;
+import mindustry.gen.*;
 
-import java.io.*;
-
-import static mindustry.Vars.*;
-
-public abstract class Weather<T extends WeatherEntity> extends MappableContent{
+public abstract class Weather extends MappableContent{
     protected float duration = 100f;
+    protected Prov<Weatherc> type = WeatherEntity::create;
+
+    public Weather(String name, Prov<Weatherc> type){
+        super(name);
+        this.type = type;
+    }
 
     public Weather(String name){
         super(name);
     }
 
-    public abstract void update(T entity);
+    public void create(){
+        Weatherc entity = type.get();
+        entity.init(this);
+        entity.add();
+    }
 
-    public abstract void draw(T entity);
+    public void update(){
+
+    }
+
+    public void draw(){
+
+    }
 
     @Override
     public ContentType getContentType(){
         return ContentType.weather;
     }
 
-    /** Represents the in-game state of a weather event. */
-    @SuppressWarnings("unchecked")
-    public static class WeatherEntity extends BaseEntity implements SaveTrait, DrawTrait{
-        /** How long this event has been occuring in ticks. */
-        protected float life;
-        /** Type of weather that is being simulated. */
-        protected @NonNull
+    @EntityDef(value = {Weatherc.class}, pooled = true, isFinal = false)
+    @Component
+    abstract class WeatherComp implements Posc, DrawLayerWeatherc{
         Weather weather;
 
-        public WeatherEntity(Weather weather){
+        void init(Weather weather){
             this.weather = weather;
         }
 
         @Override
-        public void update(){
-            weather.update(this);
+        public void drawWeather(){
+            weather.draw();
         }
 
         @Override
-        public void draw(){
-            weather.draw(this);
-        }
-
-        @CallSuper
-        @Override
-        public void writeSave(DataOutput stream) throws IOException{
-            stream.writeShort(weather.id);
-        }
-
-        @CallSuper
-        @Override
-        public void readSave(DataInput stream, byte version) throws IOException{
-            weather = content.getByID(ContentType.weather, stream.readShort());
-        }
-
-        @Override
-        public byte version(){
-            return 0;
-        }
-
-        @Override
-        public TypeID getTypeID(){
-            return null;
-        }
-
-        @Override
-        public EntityGroup targetGroup(){
-            return weatherGroup;
+        public float clipSize(){
+            return Float.MAX_VALUE;
         }
     }
 }

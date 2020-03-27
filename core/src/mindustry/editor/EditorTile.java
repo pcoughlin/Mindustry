@@ -1,5 +1,6 @@
 package mindustry.editor;
 
+import arc.util.ArcAnnotate.*;
 import mindustry.content.Blocks;
 import mindustry.core.GameState.State;
 import mindustry.editor.DrawOperation.OpType;
@@ -7,7 +8,7 @@ import mindustry.game.Team;
 import mindustry.gen.TileOp;
 import mindustry.world.Block;
 import mindustry.world.Tile;
-import mindustry.world.blocks.*;
+import mindustry.world.blocks.environment.*;
 import mindustry.world.modules.*;
 
 import static mindustry.Vars.state;
@@ -20,7 +21,7 @@ public class EditorTile extends Tile{
     }
 
     @Override
-    public void setFloor(Floor type){
+    public void setFloor(@NonNull Floor type){
         if(state.is(State.playing)){
             super.setFloor(type);
             return;
@@ -41,29 +42,16 @@ public class EditorTile extends Tile{
     }
 
     @Override
-    public void setBlock(Block type){
-        if(state.is(State.playing)){
-            super.setBlock(type);
-            return;
-        }
-
-        if(block == type) return;
-        op(OpType.block, block.id);
-        if(rotation != 0) op(OpType.rotation, rotation);
-        if(team != 0) op(OpType.team, team);
-        super.setBlock(type);
-    }
-
-    @Override
     public void setBlock(Block type, Team team, int rotation){
         if(state.is(State.playing)){
             super.setBlock(type, team, rotation);
             return;
         }
 
-        setBlock(type);
-        setTeam(team);
-        rotation(rotation);
+        op(OpType.block, block.id);
+        if(rotation != 0) op(OpType.rotation, (byte)rotation);
+        if(team() != Team.derelict) op(OpType.team, team().id);
+        super.setBlock(type, team, rotation);
     }
 
     @Override
@@ -73,7 +61,7 @@ public class EditorTile extends Tile{
             return;
         }
 
-        if(getTeamID() == team.ordinal()) return;
+        if(getTeamID() == team.id) return;
         op(OpType.team, getTeamID());
         super.setTeam(team);
     }
@@ -92,20 +80,15 @@ public class EditorTile extends Tile{
 
     @Override
     public void setOverlay(Block overlay){
-        setOverlayID(overlay.id);
-    }
-
-    @Override
-    public void setOverlayID(short overlay){
         if(state.is(State.playing)){
-            super.setOverlayID(overlay);
+            super.setOverlay(overlay);
             return;
         }
 
         if(floor.isLiquid) return;
-        if(overlayID() == overlay) return;
+        if(overlay() == overlay) return;
         op(OpType.overlay, this.overlay.id);
-        super.setOverlayID(overlay);
+        super.setOverlay(overlay);
     }
 
     @Override
@@ -119,9 +102,9 @@ public class EditorTile extends Tile{
     }
 
     @Override
-    protected void changed(){
+    protected void changed(Team team){
         if(state.is(State.playing)){
-            super.changed();
+            super.changed(team);
             return;
         }
 
@@ -138,11 +121,11 @@ public class EditorTile extends Tile{
         Block block = block();
 
         if(block.hasEntity()){
-            entity = block.newEntity().init(this, false);
-            entity.cons = new ConsumeModule(entity);
-            if(block.hasItems) entity.items = new ItemModule();
-            if(block.hasLiquids) entity.liquids = new LiquidModule();
-            if(block.hasPower) entity.power = new PowerModule();
+            entity = block.newEntity().init(this, team, false);
+            entity.cons(new ConsumeModule(entity));
+            if(block.hasItems) entity.items(new ItemModule());
+            if(block.hasLiquids) entity.liquids(new LiquidModule());
+            if(block.hasPower) entity.power(new PowerModule());
         }
     }
 

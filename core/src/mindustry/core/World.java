@@ -1,30 +1,32 @@
 package mindustry.core;
 
 import arc.*;
-import arc.struct.*;
+import arc.func.*;
 import arc.math.*;
 import arc.math.geom.*;
-import arc.util.*;
+import arc.struct.*;
 import arc.util.ArcAnnotate.*;
-import mindustry.content.*;
+import arc.util.*;
+import arc.util.noise.*;
 import mindustry.core.GameState.*;
 import mindustry.game.EventType.*;
 import mindustry.game.*;
+import mindustry.game.Teams.*;
+import mindustry.gen.*;
 import mindustry.io.*;
 import mindustry.maps.*;
 import mindustry.maps.filters.*;
 import mindustry.maps.filters.GenerateFilter.*;
-import mindustry.maps.generators.*;
 import mindustry.type.*;
 import mindustry.world.*;
-import mindustry.world.blocks.*;
+import mindustry.world.blocks.legacy.*;
 
 import static mindustry.Vars.*;
 
 public class World{
     public final Context context = new Context();
 
-    private Map currentMap;
+    private Map currentMap = new Map(new StringMap());
     public @NonNull Tiles tiles = new Tiles(0, 0);
 
     private boolean generating, invalidMap;
@@ -67,11 +69,11 @@ public class World{
     }
 
     public int width(){
-        return tiles.width();
+        return tiles.width;
     }
 
     public int height(){
-        return tiles.height();
+        return tiles.height;
     }
 
     public int unitWidth(){
@@ -82,31 +84,51 @@ public class World{
         return height()*tilesize;
     }
 
-    public @Nullable
-    Tile tile(int pos){
-        return tiles == null ? null : tile(Pos.x(pos), Pos.y(pos));
+    @Nullable
+    public Tile tile(int pos){
+        return tile(Point2.x(pos), Point2.y(pos));
     }
 
-    public @Nullable Tile tile(int x, int y){
+    @Nullable
+    public Tile tile(int x, int y){
         return tiles.get(x, y);
     }
 
-    public @Nullable Tile ltile(int x, int y){
-        Tile tile = tile(x, y);
+    @Nullable
+    public Tile tilec(int x, int y){
+        Tile tile = tiles.get(x, y);
         if(tile == null) return null;
-        return tile.block().linked(tile);
+        if(tile.entity != null) return tile.entity.tile();
+        return tile;
     }
 
+    @Nullable
+    public Tilec ent(int x, int y){
+        Tile tile = tile(x, y);
+        if(tile == null) return null;
+        return tile.entity;
+    }
+
+    @Nullable
+    public Tilec ent(int pos){
+        Tile tile = tile(pos);
+        if(tile == null) return null;
+        return tile.entity;
+    }
+
+    @NonNull
     public Tile rawTile(int x, int y){
         return tiles.getn(x, y);
     }
 
-    public @Nullable Tile tileWorld(float x, float y){
+    @Nullable
+    public Tile tileWorld(float x, float y){
         return tile(Math.round(x / tilesize), Math.round(y / tilesize));
     }
 
-    public @Nullable Tile ltileWorld(float x, float y){
-        return ltile(Math.round(x / tilesize), Math.round(y / tilesize));
+    @Nullable
+    public Tilec entWorld(float x, float y){
+        return ent(Math.round(x / tilesize), Math.round(y / tilesize));
     }
 
     public int toTile(float coord){
@@ -128,7 +150,7 @@ public class World{
     public Tiles resize(int width, int height){
         clearTileEntities();
 
-        if(tiles.width() != width || tiles.height() != height){
+        if(tiles.width != width || tiles.height != height){
             tiles = new Tiles(width, height);
         }
 
@@ -151,6 +173,12 @@ public class World{
         prepareTiles(tiles);
 
         for(Tile tile : tiles){
+            //remove legacy blocks; they need to stop existing
+            if(tile.block() instanceof LegacyBlock){
+                tile.remove();
+                continue;
+            }
+
             tile.updateOcclusion();
 
             if(tile.entity != null){
@@ -162,7 +190,7 @@ public class World{
             addDarkness(tiles);
         }
 
-        entities.all().each(group -> group.resize(-finalWorldBounds, -finalWorldBounds, tiles.width() * tilesize + finalWorldBounds * 2, tiles.height() * tilesize + finalWorldBounds * 2));
+        Groups.resize(-finalWorldBounds, -finalWorldBounds, tiles.width * tilesize + finalWorldBounds * 2, tiles.height * tilesize + finalWorldBounds * 2);
 
         generating = false;
         Events.fire(new WorldLoadEvent());
@@ -176,21 +204,20 @@ public class World{
         return generating;
     }
 
-    public boolean isZone(){
-        return getZone() != null;
-    }
-
-    public Zone getZone(){
-        return state.rules.zone;
-    }
-
-    public void loadGenerator(Generator generator){
+    public void loadGenerator(int width, int height, Cons<Tiles> generator){
         beginMapLoad();
 
-        resize(generator.width, generator.height);
-        generator.generate(tiles);
+        resize(width, height);
+        generator.get(tiles);
 
         endMapLoad();
+    }
+
+    public void loadSector(Sector sector){
+        currentMap = new Map(StringMap.of("name", sector.planet.localizedName + "; Sector " + sector.id));
+        state.rules.sector = sector;
+        int size = sector.getSize();
+        loadGenerator(size, size, tiles -> sector.planet.generator.generate(tiles, sector));
     }
 
     public void loadMap(Map map){
@@ -200,7 +227,7 @@ public class World{
     public void loadMap(Map map, Rules checkRules){
         try{
             SaveIO.load(map.file, new FilterContext(map));
-        }catch(Exception e){
+        }catch(Throwable e){
             Log.err(e);
             if(!headless){
                 ui.showErrorMessage("$map.invalid");
@@ -216,33 +243,22 @@ public class World{
         invalidMap = false;
 
         if(!headless){
-            if(state.teams.get(defaultTeam).cores.size == 0 && !checkRules.pvp){
+            if(state.teams.playerCores().size == 0 && !checkRules.pvp){
                 ui.showErrorMessage("$map.nospawn");
                 invalidMap = true;
             }else if(checkRules.pvp){ //pvp maps need two cores to be valid
-                int teams = 0;
-                for(Team team : Team.all){
-                    if(state.teams.get(team).cores.size != 0){
-                        teams ++;
-                    }
-                }
-                if(teams < 2){
+                if(state.teams.getActive().count(TeamData::hasCore) < 2){
                     invalidMap = true;
                     ui.showErrorMessage("$map.nospawn.pvp");
                 }
             }else if(checkRules.attackMode){ //attack maps need two cores to be valid
-                invalidMap = state.teams.get(waveTeam).cores.isEmpty();
+                invalidMap = state.teams.get(state.rules.waveTeam).noCores();
                 if(invalidMap){
                     ui.showErrorMessage("$map.nospawn.attack");
                 }
             }
         }else{
-            invalidMap = true;
-            for(Team team : Team.all){
-                if(state.teams.get(team).cores.size != 0){
-                    invalidMap = false;
-                }
-            }
+            invalidMap = !state.teams.getActive().contains(TeamData::hasCore);
 
             if(invalidMap){
                 throw new MapException(map, "Map has no cores!");
@@ -255,36 +271,6 @@ public class World{
     public void notifyChanged(Tile tile){
         if(!generating){
             Core.app.post(() -> Events.fire(new TileChangeEvent(tile)));
-        }
-    }
-
-    public void removeBlock(Tile tile){
-        if(tile == null) return;
-        tile.link().getLinkedTiles(other -> other.setBlock(Blocks.air));
-    }
-
-    public void setBlock(Tile tile, Block block, Team team){
-        setBlock(tile, block, team, 0);
-    }
-
-    public void setBlock(Tile tile, Block block, Team team, int rotation){
-        tile.setBlock(block, team, rotation);
-        if(block.isMultiblock()){
-            int offsetx = -(block.size - 1) / 2;
-            int offsety = -(block.size - 1) / 2;
-
-            for(int dx = 0; dx < block.size; dx++){
-                for(int dy = 0; dy < block.size; dy++){
-                    int worldx = dx + offsetx + tile.x;
-                    int worldy = dy + offsety + tile.y;
-                    if(!(worldx == tile.x && worldy == tile.y)){
-                        Tile toplace = world.tile(worldx, worldy);
-                        if(toplace != null){
-                            toplace.setBlock(BlockPart.get(dx + offsetx, dy + offsety), team);
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -322,8 +308,8 @@ public class World{
     }
 
     public void addDarkness(Tiles tiles){
-        byte[] dark = new byte[tiles.width() * tiles.height()];
-        byte[] writeBuffer = new byte[tiles.width() * tiles.height()];
+        byte[] dark = new byte[tiles.width * tiles.height];
+        byte[] writeBuffer = new byte[tiles.width * tiles.height];
 
         byte darkIterations = 4;
 
@@ -336,11 +322,11 @@ public class World{
 
         for(int i = 0; i < darkIterations; i++){
             for(Tile tile : tiles){
-                int idx = tile.y * tiles.width() + tile.x;
+                int idx = tile.y * tiles.width + tile.x;
                 boolean min = false;
                 for(Point2 point : Geometry.d4){
                     int newX = tile.x + point.x, newY = tile.y + point.y;
-                    int nidx = newY * tiles.width() + newX;
+                    int nidx = newY * tiles.width + newX;
                     if(tiles.in(newX, newY) && dark[nidx] < dark[idx]){
                         min = true;
                         break;
@@ -353,7 +339,7 @@ public class World{
         }
 
         for(Tile tile : tiles){
-            int idx = tile.y * tiles.width() + tile.x;
+            int idx = tile.y * tiles.width + tile.x;
 
             if(tile.isDarkened()){
                 tile.rotation(dark[idx]);
@@ -363,7 +349,7 @@ public class World{
                 boolean full = true;
                 for(Point2 p : Geometry.d4){
                     int px = p.x + tile.x, py = p.y + tile.y;
-                    int nidx = py * tiles.width() + px;
+                    int nidx = py * tiles.width + px;
                     if(tiles.in(px, py) && !(tile.isDarkened() && dark[nidx] == 4)){
                         full = false;
                         break;
@@ -375,6 +361,47 @@ public class World{
         }
     }
 
+    public float getDarkness(int x, int y){
+        int edgeBlend = 2;
+
+        float dark = 0;
+        int edgeDst = Math.min(x, Math.min(y, Math.min(Math.abs(x - (tiles.width - 1)), Math.abs(y - (tiles.height - 1)))));
+        if(edgeDst <= edgeBlend){
+            dark = Math.max((edgeBlend - edgeDst) * (4f / edgeBlend), dark);
+        }
+
+        if(state.hasSector()){
+            int circleBlend = 14;
+            //quantized angle
+            float offset = state.getSector().rect.rotation + 90;
+            float angle = Angles.angle(x, y, tiles.width/2, tiles.height/2) + offset;
+            //polygon sides, depends on sector
+            int sides = state.getSector().tile.corners.length;
+            float step = 360f / sides;
+            //prev and next angles of poly
+            float prev = Mathf.round(angle, step);
+            float next = prev + step;
+            //raw line length to be translated
+            float length = tiles.width/2f;
+            float rawDst = Intersector.distanceLinePoint(Tmp.v1.trns(prev, length), Tmp.v2.trns(next, length), Tmp.v3.set(x - tiles.width/2, y - tiles.height/2).rotate(offset)) / Mathf.sqrt3 - 1;
+
+            //noise
+            rawDst += Noise.noise(x, y, 11f, 7f) + Noise.noise(x, y, 22f, 15f);
+
+            int circleDst = (int)(rawDst - (tiles.width / 2 - circleBlend));
+            if(circleDst > 0){
+                dark = Math.max(circleDst / 1f, dark);
+            }
+        }
+
+        Tile tile = world.tile(x, y);
+        if(tile != null && tile.block().solid && tile.block().fillsTile && !tile.block().synthetic()){
+            dark = Math.max(dark, tile.rotation());
+        }
+
+        return dark;
+    }
+
     /**
      * 'Prepares' a tile array by:<br>
      * - setting up multiblocks<br>
@@ -383,6 +410,8 @@ public class World{
      */
     public void prepareTiles(Tiles tiles){
 
+        //TODO FIX
+        /*
         //find multiblocks
         IntArray multiblocks = new IntArray();
         for(Tile tile : tiles){
@@ -395,12 +424,12 @@ public class World{
         for(int i = 0; i < multiblocks.size; i++){
             int pos = multiblocks.get(i);
 
-            int x = Pos.x(pos);
-            int y = Pos.y(pos);
+            int x = Point2.x(pos);
+            int y = Point2.y(pos);
             Tile tile = tiles.getn(x, y);
 
             Block result = tile.block();
-            Team team = tile.getTeam();
+            Team team = tile.team();
 
             int offsetx = -(result.size - 1) / 2;
             int offsety = -(result.size - 1) / 2;
@@ -417,7 +446,7 @@ public class World{
                     }
                 }
             }
-        }
+        }*/
     }
 
     public interface Raycaster{
@@ -426,8 +455,8 @@ public class World{
 
     private class Context implements WorldContext{
         @Override
-        public Tile tile(int x, int y){
-            return tiles.get(x, y);
+        public Tile tile(int index){
+            return tiles.geti(index);
         }
 
         @Override
